@@ -116,6 +116,33 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://www.gstatic.com/dialogflow-console/fast/messenger/bootstrap.js?v=1";
+    script.async = true;
+    document.body.appendChild(script);
+
+    const dfMessenger = document.createElement("df-messenger");
+    dfMessenger.setAttribute(
+      "chat-icon",
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSYuGoD6xyeDduzJOaEX9NRorC7cSbVBGYUkYCGxmVL4Q&amps=10"
+    );
+    dfMessenger.setAttribute("chat-title", "SALU–ShahdadkotCampus");
+    dfMessenger.setAttribute("agent-id", "ed0fbec6-913b-4099-a3f2-dd3ba723d240");
+    dfMessenger.setAttribute("language-code", "en");
+    document.body.appendChild(dfMessenger);
+
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+      if (document.body.contains(dfMessenger)) {
+        document.body.removeChild(dfMessenger);
+      }
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex min-h-screen flex-col">
