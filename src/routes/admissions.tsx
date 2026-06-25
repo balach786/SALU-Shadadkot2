@@ -86,7 +86,7 @@ function AdmissionsPage() {
         />
         <section className="section-y">
           <div className="container-x">
-            <ApplicantCard data={result} onSearchAgain={() => setResult(null)} />
+            <ApplicantCard data={result} onSearchAgain={() => setResult(null)} localPhotoFile={photo} />
           </div>
         </section>
       </>

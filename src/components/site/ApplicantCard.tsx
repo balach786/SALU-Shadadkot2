@@ -1,15 +1,50 @@
 import { Download, Printer, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.png";
-import { SITE } from "@/lib/config";
+import { SITE, APPS_SCRIPT_URL } from "@/lib/config";
 import { buildQrUrl, type ApplicantRecord } from "@/lib/admissions";
+import { useEffect, useState } from "react";
 
 interface Props {
   data: ApplicantRecord;
   onSearchAgain?: () => void;
+  localPhotoFile?: File | null;
 }
 
-export function ApplicantCard({ data, onSearchAgain }: Props) {
+export function ApplicantCard({ data, onSearchAgain, localPhotoFile }: Props) {
+  const [photoSrc, setPhotoSrc] = useState<string>("");
+  const [loadingPhoto, setLoadingPhoto] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (localPhotoFile) {
+      const url = URL.createObjectURL(localPhotoFile);
+      setPhotoSrc(url);
+      return () => URL.revokeObjectURL(url);
+    } else if (data.photoUrl) {
+      setLoadingPhoto(true);
+      const fetchPhoto = async () => {
+        try {
+          const res = await fetch(
+            `${APPS_SCRIPT_URL}?action=photo&cnic=${encodeURIComponent(data.cnic)}`,
+          );
+          const json = await res.json();
+          if (json.ok && json.data?.base64) {
+            setPhotoSrc(json.data.base64);
+          } else {
+            setPhotoSrc(data.photoUrl || "");
+          }
+        } catch (err) {
+          setPhotoSrc(data.photoUrl || "");
+        } finally {
+          setLoadingPhoto(false);
+        }
+      };
+      fetchPhoto();
+    } else {
+      setPhotoSrc("");
+    }
+  }, [data.photoUrl, data.cnic, localPhotoFile]);
+
   const dateStr = data.timestamp
     ? new Date(data.timestamp).toLocaleDateString("en-GB", {
         day: "2-digit",
@@ -39,17 +74,20 @@ export function ApplicantCard({ data, onSearchAgain }: Props) {
 
         <div className="grid gap-6 p-6 sm:grid-cols-[120px_1fr_auto]">
           {/* Photo */}
-          <div className="h-[150px] w-[120px] overflow-hidden rounded-lg border-2 border-gold bg-secondary">
-            {data.photoUrl ? (
+          <div className="flex h-[150px] w-[120px] items-center justify-center overflow-hidden rounded-lg border-2 border-gold bg-secondary">
+            {loadingPhoto ? (
+              <div className="text-xs text-muted-foreground animate-pulse">Loading...</div>
+            ) : photoSrc ? (
               <img
-                src={data.photoUrl}
+                src={photoSrc}
                 alt="Applicant"
                 className="h-full w-full object-cover"
                 onError={(e) => {
-                  // Fallback: hide broken image and show placeholder text
                   (e.currentTarget as HTMLImageElement).style.display = "none";
-                  (e.currentTarget.parentElement as HTMLElement).innerHTML =
-                    '<div class="flex h-full items-center justify-center text-xs text-muted-foreground">Photo</div>';
+                  const placeholder = document.createElement("div");
+                  placeholder.className = "flex h-full w-full items-center justify-center text-xs text-muted-foreground";
+                  placeholder.innerText = "Photo";
+                  e.currentTarget.parentElement?.appendChild(placeholder);
                 }}
               />
             ) : (

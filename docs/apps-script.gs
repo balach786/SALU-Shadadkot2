@@ -80,6 +80,7 @@ function doGet(e) {
     const action = (e.parameter && e.parameter.action) || 'search';
     if (action === 'search') return jsonOk(handleSearch_(e.parameter.cnic));
     if (action === 'list')   return jsonOk(handleList_());
+    if (action === 'photo')  return jsonOk(handleGetPhoto_(e.parameter.cnic));
     return jsonErr('Unknown action: ' + action);
   } catch (err) {
     return jsonErr(err.message || String(err));
@@ -364,4 +365,30 @@ function generateCardPdf_(folder, d) {
   const file = folder.createFile(blob).setName(d.applicationId + '_card.pdf');
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   return file.getUrl();
+}
+
+function handleGetPhoto_(cnic) {
+  if (!cnic) throw new Error('CNIC is required');
+  const row = findRowByCnic_(cnic);
+  if (!row) throw new Error('Application not found');
+  
+  const photoUrl = row[11]; // Photo URL is index 11
+  if (!photoUrl) return { base64: '' };
+  
+  const match = photoUrl.match(/id=([^&]+)/);
+  if (!match) return { base64: '' };
+  const fileId = match[1];
+  
+  try {
+    const file = DriveApp.getFileById(fileId);
+    const blob = file.getBlob();
+    const base64 = Utilities.base64Encode(blob.getBytes());
+    const mimeType = blob.getContentType();
+    return {
+      base64: 'data:' + mimeType + ';base64,' + base64
+    };
+  } catch (err) {
+    console.error('Failed to get photo: ' + err.message);
+    return { base64: '' };
+  }
 }
