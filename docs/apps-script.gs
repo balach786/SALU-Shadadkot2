@@ -11,7 +11,7 @@
  *  ▸ See `docs/SETUP.md` for full step-by-step instructions.
  *
  *  ENDPOINTS
- *    POST  ?action=submit         – Submit a new application (FormData)
+ *    POST  ?action=submit         – Submit a new application (JSON Payload)
  *    POST  ?action=updateStatus   – Update an application's status
  *    POST  ?action=contact        – Contact form message
  *    GET   ?action=search&cnic=…  – Lookup an applicant by CNIC
@@ -40,10 +40,35 @@ const APP_HEADERS = [
 
 function doPost(e) {
   try {
-    const action = (e.parameter && e.parameter.action) || 'submit';
-    if (action === 'submit')        return jsonOk(handleSubmit_(e));
-    if (action === 'updateStatus')  return jsonOk(handleUpdateStatus_(e));
-    if (action === 'contact')       return jsonOk(handleContact_(e));
+    let p = {};
+    let files = {};
+    
+    // 1. Try parsing JSON from request body
+    if (e.postData && e.postData.contents) {
+      try {
+        const payload = JSON.parse(e.postData.contents);
+        if (payload && typeof payload === 'object') {
+          p = payload;
+          if (payload.files) {
+            files = payload.files;
+          }
+        }
+      } catch (jsonErr) {
+        // Not valid JSON, ignore and fallback to parameters
+      }
+    }
+    
+    // 2. Merge URL parameters / URL-encoded form data parameters if present
+    if (e.parameter) {
+      for (const key in e.parameter) {
+        p[key] = e.parameter[key];
+      }
+    }
+    
+    const action = p.action || 'submit';
+    if (action === 'submit')        return jsonOk(handleSubmit_(p, files));
+    if (action === 'updateStatus')  return jsonOk(handleUpdateStatus_(p));
+    if (action === 'contact')       return jsonOk(handleContact_(p));
     return jsonErr('Unknown action: ' + action);
   } catch (err) {
     return jsonErr(err.message || String(err));
@@ -63,9 +88,8 @@ function doGet(e) {
 
 // ---------- HANDLERS --------------------------------------------------
 
-function handleSubmit_(e) {
+function handleSubmit_(p, files) {
   ensureSheets_();
-  const p = e.parameter || {};
 
   // Validate
   const required = ['fullName','fatherName','cnic','dob','gender','phone','email','address','program'];
@@ -81,29 +105,39 @@ function handleSubmit_(e) {
   const folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
   const applicantFolder = folder.createFolder(p.cnic + '_' + Date.now());
 
-  const photoUrl   = uploadFile_(e, 'photo', applicantFolder);
-  const docsUrl    = uploadFile_(e, 'documents', applicantFolder);
-  const feeUrl     = uploadFile_(e, 'feeScreenshot', applicantFolder);
+  // Upload files using base64 decoding
+  const photoData = uploadFile_(files.photo, 'photo', applicantFolder);
+  const docsData  = uploadFile_(files.documents, 'documents', applicantFolder);
+  const feeData   = uploadFile_(files.feeScreenshot, 'feeScreenshot', applicantFolder);
+
+  const photoUrl = photoData.url;
+  const docsUrl  = docsData.url;
+  const feeUrl   = feeData.url;
 
   const applicationId = nextApplicationId_();
   const timestamp = new Date();
 
   // QR encodes the verification URL (or app id + cnic)
   const qrPayload = applicationId + '|' + p.cnic + '|' + p.fullName;
-  const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(qrPayload);
+  const rawQrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(qrPayload);
+  
+  // Fetch QR Code and convert to base64 so it gets permanently embedded in the PDF
+  const qrBase64 = getQrCodeBase64_(rawQrUrl);
 
-  // Generate PDF card
+  // Generate PDF card with inlined base64 images
   const cardUrl = generateCardPdf_(applicantFolder, {
     applicationId, fullName: p.fullName, fatherName: p.fatherName,
     cnic: p.cnic, program: p.program, dob: p.dob,
-    timestamp, photoUrl, qrUrl
+    timestamp, 
+    photoBase64: photoData.base64DataUrl, 
+    qrBase64: qrBase64
   });
 
   // Append row
   const row = [
     applicationId, timestamp, p.fullName, p.fatherName, p.cnic, p.dob,
     p.gender, p.phone, p.email, p.address, p.program,
-    photoUrl, docsUrl, feeUrl, cardUrl, qrUrl, 'Submitted'
+    photoUrl, docsUrl, feeUrl, cardUrl, rawQrUrl, 'Submitted'
   ];
   sheet_(SHEET_APPLICATIONS).appendRow(row);
 
@@ -142,25 +176,24 @@ function handleList_() {
   return data.slice(1).map(recordFromRow_);
 }
 
-function handleUpdateStatus_(e) {
-  const id     = e.parameter.applicationId;
-  const status = e.parameter.status;
+function handleUpdateStatus_(p) {
+  const id     = p.applicationId;
+  const status = p.status;
   if (!id || !status) throw new Error('applicationId and status are required');
   const sh = sheet_(SHEET_APPLICATIONS);
   const values = sh.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
-    if (values[i][0] === id) {
-      sh.getRange(i + 1, APP_HEADERS.indexOf('Status') + 1).setValue(status);
-      log_('STATUS', id + ' -> ' + status);
-      return { applicationId: id, status: status };
-    }
+     if (values[i][0] === id) {
+       sh.getRange(i + 1, APP_HEADERS.indexOf('Status') + 1).setValue(status);
+       log_('STATUS', id + ' -> ' + status);
+       return { applicationId: id, status: status };
+     }
   }
   throw new Error('Application not found');
 }
 
-function handleContact_(e) {
+function handleContact_(p) {
   ensureSheets_();
-  const p = e.parameter;
   sheet_(SHEET_CONTACT).appendRow([new Date(), p.name || '', p.email || '', p.subject || '', p.message || '']);
   return { received: true };
 }
@@ -226,14 +259,32 @@ function recordFromRow_(row) {
   };
 }
 
-function uploadFile_(e, field, folder) {
-  const blob = e.files && e.files[field];
-  if (!blob) return '';
-  const file = folder.createFile(blob).setName(field + '_' + Date.now() + '_' + blob.getName());
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  // Use a direct-display URL so <img> tags can render the photo on the applicant card.
-  // getUrl() returns a Google Drive "open" page which browsers cannot embed directly.
-  return 'https://drive.google.com/uc?export=view&id=' + file.getId();
+function uploadFile_(fileObj, defaultName, folder) {
+  if (!fileObj || !fileObj.base64) return { url: '', base64DataUrl: '' };
+  try {
+    const decoded = Utilities.base64Decode(fileObj.base64);
+    const blob = Utilities.newBlob(decoded, fileObj.mimeType || 'application/octet-stream', fileObj.name || defaultName);
+    const file = folder.createFile(blob).setName(defaultName + '_' + Date.now() + '_' + blob.getName());
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const url = 'https://drive.google.com/uc?export=view&id=' + file.getId();
+    const base64DataUrl = 'data:' + (fileObj.mimeType || 'image/jpeg') + ';base64,' + fileObj.base64;
+    return { url: url, base64DataUrl: base64DataUrl };
+  } catch (err) {
+    console.error('File upload failed: ' + err.message);
+    return { url: '', base64DataUrl: '' };
+  }
+}
+
+function getQrCodeBase64_(qrUrl) {
+  try {
+    const response = UrlFetchApp.fetch(qrUrl);
+    const blob = response.getBlob();
+    const base64 = Utilities.base64Encode(blob.getBytes());
+    return 'data:image/png;base64,' + base64;
+  } catch (err) {
+    console.error('Failed to fetch QR code: ' + err.message);
+    return qrUrl; // fallback to URL if fetch fails
+  }
 }
 
 function escapeHtml_(s) {
@@ -242,40 +293,72 @@ function escapeHtml_(s) {
   });
 }
 
-/** Generate a simple PDF admission card and return its shared URL. */
+/** Generate a simple PDF admission card using a highly compatible HTML table structure and return its shared URL. */
 function generateCardPdf_(folder, d) {
   const html =
     '<html><head><style>' +
-    'body{font-family:Arial,sans-serif;margin:0;padding:24px;color:#111}' +
-    '.card{border:2px solid #0E5A3C;border-radius:12px;overflow:hidden}' +
-    '.band{background:#0E5A3C;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center}' +
-    '.band h1{margin:0;font-size:18px}' +
-    '.tag{background:#C9A227;color:#3a2a00;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:bold;letter-spacing:.1em;text-transform:uppercase}' +
-    '.body{display:flex;gap:18px;padding:18px}' +
-    '.photo{width:110px;height:140px;border:2px solid #C9A227;border-radius:8px;overflow:hidden;background:#eee}' +
-    '.photo img{width:100%;height:100%;object-fit:cover}' +
-    '.details{flex:1;font-size:13px;line-height:1.7}' +
-    '.k{color:#666;text-transform:uppercase;font-size:10px;letter-spacing:.08em}' +
-    '.qr{width:120px;text-align:center;font-size:10px;color:#666}' +
-    '.qr img{width:120px;height:120px;border:1px solid #ddd;border-radius:6px;background:#fff}' +
-    '.foot{background:#f5f5f1;text-align:center;font-size:10px;color:#666;padding:8px}' +
+    'body{font-family:Arial,sans-serif;margin:0;padding:20px;color:#111}' +
+    '.card-table{width:100%;border-collapse:collapse;border:2px solid #0E5A3C;background:#fff;border-radius:10px;overflow:hidden}' +
+    '.header-band{background:#0E5A3C;color:#fff;padding:12px 18px}' +
+    '.header-title{font-size:16px;font-weight:bold;margin:0;color:#ffffff}' +
+    '.header-tag{background:#C9A227;color:#3a2a00;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;white-space:nowrap}' +
+    '.photo-cell{width:120px;padding:15px;vertical-align:top}' +
+    '.photo-box{width:110px;height:135px;border:2px solid #C9A227;border-radius:6px;overflow:hidden;background:#f5f5f5;text-align:center}' +
+    '.photo-img{width:110px;height:135px;object-fit:cover}' +
+    '.details-cell{padding:15px;vertical-align:top;font-size:13px;line-height:1.6}' +
+    '.k{color:#666;text-transform:uppercase;font-size:10px;letter-spacing:0.5px;font-weight:bold;margin-bottom:2px}' +
+    '.v{color:#111;font-weight:normal;margin-bottom:10px}' +
+    '.qr-cell{width:130px;padding:15px;vertical-align:middle;text-align:center}' +
+    '.qr-box{width:110px;border:1px solid #ddd;border-radius:6px;background:#fff;padding:4px;display:inline-block}' +
+    '.qr-img{width:100px;height:100px}' +
+    '.qr-label{font-size:9px;color:#666;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px}' +
+    '.footer-band{background:#f5f5f1;border-top:1px solid #eee;text-align:center;font-size:10px;color:#666;padding:8px}' +
     '</style></head><body>' +
-    '<div class="card">' +
-      '<div class="band"><h1>Shah Abdul Latif University · Shadadkot Campus</h1><span class="tag">Admission Card</span></div>' +
-      '<div class="body">' +
-        '<div class="photo">' + (d.photoUrl ? '<img src="' + d.photoUrl + '"/>' : '') + '</div>' +
-        '<div class="details">' +
-          '<div><span class="k">Application ID</span><br><b style="color:#0E5A3C">' + d.applicationId + '</b></div>' +
-          '<div><span class="k">Name</span><br>' + escapeHtml_(d.fullName) + '</div>' +
-          '<div><span class="k">Father</span><br>' + escapeHtml_(d.fatherName) + '</div>' +
-          '<div><span class="k">CNIC</span><br>' + escapeHtml_(d.cnic) + '</div>' +
-          '<div><span class="k">Program</span><br>' + escapeHtml_(d.program) + '</div>' +
-          '<div><span class="k">Date</span><br>' + Utilities.formatDate(d.timestamp, Session.getScriptTimeZone(), 'dd MMM yyyy') + '</div>' +
-        '</div>' +
-        '<div class="qr"><img src="' + d.qrUrl + '"/><div>Scan to verify</div></div>' +
-      '</div>' +
-      '<div class="foot">Computer-generated · Bring original CNIC on test day</div>' +
-    '</div></body></html>';
+    
+    '<table class="card-table">' +
+      '<tr>' +
+        '<td class="header-band" colspan="3">' +
+          '<table style="width:100%;border-collapse:collapse;"><tr>' +
+            '<td><span style="font-size:16px;font-weight:bold;color:#ffffff;margin:0;">Shah Abdul Latif University &middot; Shadadkot Campus</span></td>' +
+            '<td style="text-align:right;"><span class="header-tag">Admission Card</span></td>' +
+          '</tr></table>' +
+        '</td>' +
+      '</tr>' +
+      '<tr>' +
+        '<td class="photo-cell">' +
+          '<div class="photo-box">' + 
+            (d.photoBase64 ? '<img class="photo-img" src="' + d.photoBase64 + '"/>' : '<div style="line-height:135px;color:#999;font-size:12px;">No Photo</div>') + 
+          '</div>' +
+        '</td>' +
+        '<td class="details-cell">' +
+          '<div class="k">Application ID</div>' +
+          '<div class="v" style="font-size:15px;font-weight:bold;color:#0E5A3C">' + d.applicationId + '</div>' +
+          '<div class="k">Full Name</div>' +
+          '<div class="v">' + escapeHtml_(d.fullName) + '</div>' +
+          '<div class="k">Father\'s Name</div>' +
+          '<div class="v">' + escapeHtml_(d.fatherName) + '</div>' +
+          '<div class="k">CNIC / B-Form</div>' +
+          '<div class="v">' + escapeHtml_(d.cnic) + '</div>' +
+          '<div class="k">Applied Program</div>' +
+          '<div class="v">' + escapeHtml_(d.program) + '</div>' +
+          '<div class="k">Issue Date</div>' +
+          '<div class="v">' + Utilities.formatDate(d.timestamp, Session.getScriptTimeZone(), 'dd MMM yyyy') + '</div>' +
+        '</td>' +
+        '<td class="qr-cell">' +
+          '<div class="qr-box">' +
+            (d.qrBase64 ? '<img class="qr-img" src="' + d.qrBase64 + '"/>' : '') +
+            '<div class="qr-label">Scan to verify</div>' +
+          '</div>' +
+        '</td>' +
+      '</tr>' +
+      '<tr>' +
+        '<td class="footer-band" colspan="3">' +
+          'Computer-generated Admission Slip &bull; Bring original CNIC and printed copy on test day.' +
+        '</td>' +
+      '</tr>' +
+    '</table>' +
+    
+    '</body></html>';
 
   const blob = Utilities.newBlob(html, 'text/html', d.applicationId + '.html').getAs('application/pdf');
   const file = folder.createFile(blob).setName(d.applicationId + '_card.pdf');

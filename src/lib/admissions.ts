@@ -38,10 +38,26 @@ export function isBackendConfigured(): boolean {
   return !!APPS_SCRIPT_URL && APPS_SCRIPT_URL.startsWith("http");
 }
 
+/** Helper to convert a browser File to a Base64 string */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        const base64 = reader.result.split(",")[1];
+        resolve(base64);
+      } else {
+        reject(new Error("Failed to read file as data URL"));
+      }
+    };
+    reader.onerror = (err) => reject(err);
+  });
+}
+
 /**
- * Submit application as FormData (so files travel as-is) to the
- * Apps Script Web App. Apps Script `doPost(e)` reads
- * e.parameter.* (text fields) and e.files.* (uploaded blobs).
+ * Submit application as JSON (containing Base64 files) to the
+ * Apps Script Web App.
  */
 export async function submitApplication(
   input: AdmissionInput,
@@ -55,15 +71,47 @@ export async function submitApplication(
     };
   }
 
-  const fd = new FormData();
-  fd.append("action", "submit");
-  Object.entries(input).forEach(([k, v]) => fd.append(k, String(v)));
-  if (files.photo) fd.append("photo", files.photo);
-  if (files.documents) fd.append("documents", files.documents);
-  if (files.fee) fd.append("feeScreenshot", files.fee);
-
   try {
-    const res = await fetch(APPS_SCRIPT_URL, { method: "POST", body: fd });
+    const photoBase64 = files.photo ? await fileToBase64(files.photo) : null;
+    const documentsBase64 = files.documents ? await fileToBase64(files.documents) : null;
+    const feeBase64 = files.fee ? await fileToBase64(files.fee) : null;
+
+    const payload = {
+      action: "submit",
+      ...input,
+      files: {
+        photo: photoBase64
+          ? {
+              base64: photoBase64,
+              name: files.photo!.name,
+              mimeType: files.photo!.type,
+            }
+          : null,
+        documents: documentsBase64
+          ? {
+              base64: documentsBase64,
+              name: files.documents!.name,
+              mimeType: files.documents!.type,
+            }
+          : null,
+        feeScreenshot: feeBase64
+          ? {
+              base64: feeBase64,
+              name: files.fee!.name,
+              mimeType: files.fee!.type,
+            }
+          : null,
+      },
+    };
+
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify(payload),
+    });
+
     const json = await res.json();
     if (!res.ok || json.ok === false) {
       return { ok: false, error: json.error || `Request failed (${res.status})` };
@@ -119,11 +167,17 @@ export async function updateApplicationStatus(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!isBackendConfigured()) return { ok: false, error: "Backend not configured." };
   try {
-    const fd = new FormData();
-    fd.append("action", "updateStatus");
-    fd.append("applicationId", applicationId);
-    fd.append("status", status);
-    const res = await fetch(APPS_SCRIPT_URL, { method: "POST", body: fd });
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify({
+        action: "updateStatus",
+        applicationId,
+        status,
+      }),
+    });
     const json = await res.json();
     if (!res.ok || json.ok === false) return { ok: false, error: json.error || "Update failed" };
     return { ok: true };
