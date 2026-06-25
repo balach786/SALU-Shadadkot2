@@ -1,0 +1,220 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+/* Self-hosted fonts (installed via @fontsource) */
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+@import "@fontsource/poppins/800.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * SALU – Shadadkot Campus design system.
+ * Brand: Deep Green #0E5A3C, Gold #C9A227.
+ * Fonts: Poppins (headings), Inter (body).
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Poppins", "Inter", sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-dark: var(--primary-dark);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-foreground: var(--foreground);
+
+  --shadow-soft: 0 1px 2px rgb(15 90 60 / 0.04), 0 4px 12px rgb(15 90 60 / 0.06);
+  --shadow-elev: 0 4px 24px -8px rgb(15 90 60 / 0.18);
+  --shadow-gold: 0 6px 20px -8px rgb(201 162 39 / 0.45);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.22 0.04 160);
+
+  /* Surface = light gray section */
+  --surface: oklch(0.974 0.005 145);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.04 160);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.04 160);
+
+  /* Primary: deep green #0E5A3C */
+  --primary: oklch(0.42 0.10 158);
+  --primary-foreground: oklch(0.99 0.005 145);
+  --primary-dark: oklch(0.34 0.09 158);
+
+  --secondary: oklch(0.96 0.01 158);
+  --secondary-foreground: oklch(0.30 0.08 158);
+
+  --muted: oklch(0.965 0.006 145);
+  --muted-foreground: oklch(0.48 0.02 160);
+
+  --accent: oklch(0.95 0.03 90);
+  --accent-foreground: oklch(0.30 0.08 158);
+
+  /* Gold accent #C9A227 */
+  --gold: oklch(0.74 0.14 87);
+  --gold-foreground: oklch(0.22 0.05 90);
+
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.99 0.005 145);
+
+  --success: oklch(0.55 0.14 155);
+  --success-foreground: oklch(0.99 0.005 145);
+
+  --border: oklch(0.91 0.01 145);
+  --input: oklch(0.92 0.01 145);
+  --ring: oklch(0.42 0.10 158);
+
+  --chart-1: oklch(0.42 0.10 158);
+  --chart-2: oklch(0.74 0.14 87);
+  --chart-3: oklch(0.55 0.10 200);
+  --chart-4: oklch(0.6 0.12 30);
+  --chart-5: oklch(0.5 0.05 280);
+}
+
+.dark {
+  --background: oklch(0.18 0.02 160);
+  --foreground: oklch(0.97 0.005 145);
+  --surface: oklch(0.22 0.025 160);
+  --card: oklch(0.22 0.025 160);
+  --card-foreground: oklch(0.97 0.005 145);
+  --popover: oklch(0.22 0.025 160);
+  --popover-foreground: oklch(0.97 0.005 145);
+  --primary: oklch(0.62 0.12 158);
+  --primary-foreground: oklch(0.15 0.02 160);
+  --primary-dark: oklch(0.48 0.10 158);
+  --secondary: oklch(0.28 0.04 160);
+  --secondary-foreground: oklch(0.97 0.005 145);
+  --muted: oklch(0.28 0.04 160);
+  --muted-foreground: oklch(0.72 0.02 160);
+  --accent: oklch(0.32 0.04 90);
+  --accent-foreground: oklch(0.97 0.005 145);
+  --gold: oklch(0.78 0.14 87);
+  --gold-foreground: oklch(0.18 0.02 160);
+  --destructive: oklch(0.65 0.20 27);
+  --destructive-foreground: oklch(0.97 0.005 145);
+  --success: oklch(0.65 0.14 155);
+  --success-foreground: oklch(0.15 0.02 160);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.62 0.12 158);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ---------- Utility variants ---------- */
+
+@utility container-x {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: 1rem;
+  max-width: 80rem;
+  @media (min-width: 640px) { padding-inline: 1.5rem; }
+  @media (min-width: 1024px) { padding-inline: 2rem; }
+}
+
+@utility section-y {
+  padding-block: 4rem;
+  @media (min-width: 768px) { padding-block: 5.5rem; }
+}
+
+@utility text-gradient-gold {
+  background: linear-gradient(135deg, var(--gold) 0%, oklch(0.82 0.14 87) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility bg-hero-overlay {
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--primary-dark) 92%, transparent) 0%,
+    color-mix(in oklab, var(--primary) 70%, transparent) 60%,
+    color-mix(in oklab, var(--primary-dark) 85%, transparent) 100%
+  );
+}
+
+@utility card-elev {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-elev);
+    border-color: color-mix(in oklab, var(--primary) 30%, var(--border));
+  }
+}
+
+@utility gold-divider {
+  display: inline-block;
+  width: 3rem;
+  height: 3px;
+  background: var(--gold);
+  border-radius: 999px;
+}
+
+/* Print styles for admission card */
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+  .no-print { display: none !important; }
+}
